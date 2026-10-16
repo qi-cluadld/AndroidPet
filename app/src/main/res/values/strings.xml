@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AI桌宠</string>
+    <string name="title">AI 桌宠 · Android 版</string>
+    <string name="subtitle">十只桌宠，会走动、会说话、会打招呼</string>
+    <string name="status_overlay_ok">悬浮窗权限：已开启 ✓</string>
+    <string name="status_overlay_no">悬浮窗权限：未开启（必须先开，否则宠物显示不出来）</string>
+    <string name="status_notif_ok">通知权限：已开启 ✓</string>
+    <string name="status_notif_no">通知权限：未开启（前台服务需要，否则会被系统杀掉）</string>
+    <string name="btn_overlay">1. 开启悬浮窗权限</string>
+    <string name="btn_notif">2. 开启通知权限</string>
+    <string name="btn_battery">3. 忽略电池优化（三星必做）</string>
+    <string name="btn_start">放出来（十只）</string>
+    <string name="btn_stop">全部收回</string>
+    <string name="tip">用法：点一下 = 戳它；长按 = 让这只休息；拖动 = 挪位置</string>
+    <string name="notif_channel">桌宠运行中</string>
+    <string name="notif_title">十只桌宠正在你桌面上</string>
+    <string name="notif_text">点「全部收回」可以让它们回窝</string>
+    <string name="action_stop">全部收回</string>
+    <string name="toast_started">已放出十只桌宠</string>
+    <string name="toast_stopped">已全部收回</string>
+    <string name="toast_no_overlay">请先开启「显示在其他应用上层」权限</string>
+    <string name="toast_pet_gone">这只回去休息了</string>
+</resources>
