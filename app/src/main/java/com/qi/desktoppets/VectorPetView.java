@@ -40,7 +40,8 @@ public class VectorPetView extends PetView {
     private final java.util.Random rnd = new java.util.Random();
 
     private long t = 0;
-    private float blink = 0f;              // 0=睁 1=闭
+    private float blink = 0f;              // 0=open 1=closed
+    private int blinkDir = 0;
     private long nextBlink;
     private float squash = 1f, squashVel = 0f;
     private float tilt = 0f, spin = 0f, spinTarget = 0f;
@@ -53,6 +54,7 @@ public class VectorPetView extends PetView {
         super(c, new Bitmap[12], lines, startX, startY, l);
         this.d = c.getResources().getDisplayMetrics().density;
         this.scale = viewWidth() / CANVAS;
+        setLayerType(LAYER_TYPE_SOFTWARE, null);   // setShadowLayer 需要软件层
         stroke.setStyle(Paint.Style.STROKE);
         stroke.setStrokeCap(Paint.Cap.ROUND);
         stroke.setColor(Color.parseColor("#FF101014"));
@@ -71,14 +73,16 @@ public class VectorPetView extends PetView {
         long now = System.currentTimeMillis();
 
         // 眨眼：和电脑版一样驱动 EyeScale.ScaleY（这里是插值）
-        if (now > nextBlink && blink == 0f) {
-            blink = 0.001f;
+        if (now > nextBlink && blinkDir == 0) {
+            blinkDir = 1; blink = 0.001f;
             nextBlink = now + 1800 + rnd.nextInt(3200);
         }
-        if (blink > 0f) {
-            blink += 0.24f;
-            if (blink >= 2f) blink = 0f;
-            else if (blink > 1f) blink = 2f - blink;
+        if (blinkDir > 0 && blink > 0f) {
+            blink += 0.22f;
+            if (blink >= 1f) { blink = 1f; blinkDir = -1; }
+        } else if (blinkDir < 0) {
+            blink -= 0.16f;
+            if (blink <= 0f) { blink = 0f; blinkDir = 0; }
         }
         // 弹簧挤压拉伸
         squashVel += (1f - squash) * 0.18f;
@@ -137,10 +141,17 @@ public class VectorPetView extends PetView {
                 Color.parseColor("#FF2A2A33"), Color.parseColor("#FF101014"), Shader.TileMode.CLAMP));
         c.drawPath(slash, fill);
 
-        // 2) 浅色身体圆盘 R=64
+        // 2) 身体: 浅灰渐变(不是纯白) + 柔和投影
         fill.setShader(null);
-        fill.setColor(Color.parseColor("#FFFBFBFD"));
+        fill.setShadowLayer(9f * scale, 0f, 3f * scale, Color.argb(80, 20, 20, 40));
+        fill.setShader(new LinearGradient(cx - 60f, cy - 60f, cx + 60f, cy + 60f,
+                Color.parseColor("#FFFFFFFF"), Color.parseColor("#FFE6E7EE"), Shader.TileMode.CLAMP));
         c.drawCircle(cx, cy, 64f, fill);
+        fill.clearShadowLayer();
+        fill.setShader(null);
+        // 2b) 白色小脸盘 R=46(电脑版里眼睛是画在它上面的)
+        fill.setColor(Color.parseColor("#FFFDFDFF"));
+        c.drawCircle(cx, cy + 2f, 46f, fill);
 
         // 3) 黑环（最前）
         fill.setShader(new LinearGradient(44f, 44f, 200f, 200f,
