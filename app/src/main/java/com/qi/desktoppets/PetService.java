@@ -40,6 +40,7 @@ public class PetService extends Service implements PetView.Listener {
     private final List<PetView> pets = new ArrayList<>();
     private final List<WindowManager.LayoutParams> params = new ArrayList<>();
     private final Handler h = new Handler(Looper.getMainLooper());
+    private long lastGreet;
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -52,12 +53,12 @@ public class PetService extends Service implements PetView.Listener {
         float d = getResources().getDisplayMetrics().density;
         for (int i = 0; i < KEYS.length; i++) {
             String key = KEYS[i];
-            Bitmap bmp = loadBitmap("pet_" + key);
-            if (bmp == null) continue;
+            Bitmap[] frames = loadFrames(key);
+            if (frames == null) continue;
             String[] lines = loadLines("lines_" + key);
             int startX = (int) ((40 + (i % 5) * 120) * d);
             int startY = (int) ((120 + (i / 5) * 180) * d);
-            PetView v = new PetView(this, bmp, lines, startX, startY, this);
+            PetView v = new PetView(this, frames, lines, startX, startY, this);
             WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.WRAP_CONTENT,
                     WindowManager.LayoutParams.WRAP_CONTENT,
@@ -115,6 +116,27 @@ public class PetService extends Service implements PetView.Listener {
         return getResources().getIdentifier(name, "raw", getPackageName());
     }
 
+    private static final String[] POSE_NAMES = {
+            "01idle", "02blink", "03think", "04ping", "05bounce", "06spin",
+            "07wobble", "08pat", "09sleep", "10stretch", "11look", "12slide"
+    };
+
+    /** 载入一只宠物的 12 帧姿势图；缺的帧留 null，PetView 会自动回退到待机图。 */
+    private Bitmap[] loadFrames(String key) {
+        Bitmap[] out = new Bitmap[POSE_NAMES.length];
+        int found = 0;
+        for (int i = 0; i < POSE_NAMES.length; i++) {
+            int id = rawId("pet_" + key + "_" + POSE_NAMES[i]);
+            if (id == 0) id = rawId(key + "_" + POSE_NAMES[i]);
+            if (id == 0) continue;
+            try (InputStream in = getResources().openRawResource(id)) {
+                out[i] = BitmapFactory.decodeStream(in);
+                if (out[i] != null) found++;
+            } catch (Exception ignored) { }
+        }
+        return found > 0 ? out : null;
+    }
+
     private Bitmap loadBitmap(String name) {
         int id = rawId(name);
         if (id == 0) return null;
@@ -161,6 +183,18 @@ public class PetService extends Service implements PetView.Listener {
             lp.x = (int) v.wx;
             lp.y = (int) (v.wy + v.bob());
             try { wm.updateViewLayout(v, lp); } catch (Exception ignored) { }
+        }
+        // 两只靠得近就打个招呼（本地实现，不需要网络）
+        for (int a = 0; a < pets.size(); a++) {
+            for (int b = a + 1; b < pets.size(); b++) {
+                PetView pa = pets.get(a), pb = pets.get(b);
+                if (Math.abs(pa.getX() - pb.getX()) < 200 * getResources().getDisplayMetrics().density
+                        && System.currentTimeMillis() - lastGreet > 4000) {
+                    pa.greet();
+                    pb.greet();
+                    lastGreet = System.currentTimeMillis();
+                }
+            }
         }
         h.postDelayed(this::tick, 33);
     }
