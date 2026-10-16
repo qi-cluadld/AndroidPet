@@ -53,12 +53,17 @@ public class PetService extends Service implements PetView.Listener {
         float d = getResources().getDisplayMetrics().density;
         for (int i = 0; i < KEYS.length; i++) {
             String key = KEYS[i];
-            Bitmap[] frames = loadFrames(key);
-            if (frames == null) continue;
+            Bitmap[] frames = null;
+            if (!"grok".equals(key)) {
+                frames = loadFrames(key);
+                if (frames == null) continue;
+            }
             String[] lines = loadLines("lines_" + key);
             int startX = (int) ((40 + (i % 5) * 120) * d);
             int startY = (int) ((120 + (i / 5) * 180) * d);
-            PetView v = new PetView(this, frames, lines, startX, startY, this);
+            PetView v = "grok".equals(key)
+                    ? new VectorPetView(this, lines, startX, startY, this)
+                    : new PetView(this, frames, lines, startX, startY, this);
             WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.WRAP_CONTENT,
                     WindowManager.LayoutParams.WRAP_CONTENT,
