@@ -59,8 +59,11 @@ public class PetService extends Service implements PetView.Listener {
                 if (frames == null) continue;
             }
             String[] lines = loadLines("lines_" + key);
-            int startX = (int) ((40 + (i % 5) * 120) * d);
-            int startY = (int) ((120 + (i / 5) * 180) * d);
+            int cols = 5;
+            int cellW = screenW / cols;
+            int cellH = getResources().getDisplayMetrics().heightPixels / 3;
+            int startX = (int) ((i % cols) * cellW + cellW * 0.12f);
+            int startY = (int) ((i / cols) * cellH + cellH * 0.25f);
             PetView v = isVector(key)
                     ? new VectorPetView(this, key, lines, startX, startY, this)
                     : new PetView(this, frames, lines, startX, startY, this);
@@ -119,7 +122,10 @@ public class PetService extends Service implements PetView.Listener {
 
     /** 这几只已经改成矢量逐帧重画 */
     private static boolean isVector(String key) {
-        return "grok".equals(key) || "qwen".equals(key) || "glm".equals(key) || "copilot".equals(key);
+        return "grok".equals(key) || "qwen".equals(key) || "glm".equals(key) || "copilot".equals(key)
+                || "claude".equals(key) || "chatgpt".equals(key)
+                || "doubao".equals(key) || "deepseek".equals(key)
+                || "gemini".equals(key) || "apple".equals(key);
     }
 
     private int rawId(String name) {

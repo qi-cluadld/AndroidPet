@@ -38,6 +38,12 @@ public class VectorPetView extends PetView {
 
     private static final float CANVAS = 240f;
 
+    private static final String DS_BODY = "M 48,132 C 48,104 66,90 94,90 C 128,90 160,98 176,116 C 186,128 186,146 178,152 C 168,174 142,186 114,186 C 84,186 52,176 48,152 C 46,144 46,138 48,132 Z";
+    private static final String DS_BELLY = "M 56,148 C 72,172 100,186 122,186 C 148,186 168,170 178,148 C 168,160 146,170 120,170 C 94,170 70,158 56,148 Z";
+    private static final String DS_TAIL = "M 172,124 C 182,108 198,96 212,96 C 221,104 213,124 195,136 C 213,148 221,168 212,176 C 198,176 182,164 172,148 Z";
+    private static final String DS_FIN = "M 87,153 C 76,159 66,173 70,185 C 82,187 96,179 102,167 C 100,159 93,153 87,153 Z";
+
+    private final Bitmap appleBmp;
     private final String key;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -63,6 +69,14 @@ public class VectorPetView extends PetView {
     public VectorPetView(Context c, String petKey, String[] lines, int startX, int startY, Listener l) {
         super(c, new Bitmap[12], lines, startX, startY, l);
         this.key = petKey;
+        Bitmap ab = null;
+        if ("apple".equals(petKey)) {
+            try (java.io.InputStream in = c.getResources().openRawResource(
+                    c.getResources().getIdentifier("apple_body", "raw", c.getPackageName()))) {
+                ab = android.graphics.BitmapFactory.decodeStream(in);
+            } catch (Exception ignored) { }
+        }
+        this.appleBmp = ab;
         this.d = c.getResources().getDisplayMetrics().density;
         this.scale = viewWidth() / CANVAS;
         setLayerType(LAYER_TYPE_SOFTWARE, null);
@@ -89,6 +103,83 @@ public class VectorPetView extends PetView {
         return tmp;
     }
 
+    /** Port of New-RoundPolyData -R -N -Round -Phase (N-sided polygon with rounded corners). */
+    private Path roundPoly(float R, int N, float round, float phase, float cx, float cy) {
+        float[] vx = new float[N], vy = new float[N];
+        for (int i = 0; i < N; i++) {
+            double a = 2 * Math.PI * i / N + phase;
+            vx[i] = cx + (float) Math.cos(a) * R;
+            vy[i] = cy + (float) Math.sin(a) * R;
+        }
+        float k = round;
+        float[] enx = new float[N], eny = new float[N], exx = new float[N], exy = new float[N];
+        for (int i = 0; i < N; i++) {
+            int p = (i - 1 + N) % N, n = (i + 1) % N;
+            enx[i] = vx[i] + (vx[p] - vx[i]) * k;
+            eny[i] = vy[i] + (vy[p] - vy[i]) * k;
+            exx[i] = vx[i] + (vx[n] - vx[i]) * k;
+            exy[i] = vy[i] + (vy[n] - vy[i]) * k;
+        }
+        path.reset();
+        path.moveTo(exx[0], exy[0]);
+        for (int i = 1; i < N; i++) {
+            path.lineTo(enx[i], eny[i]);
+            path.quadTo(vx[i], vy[i], exx[i], exy[i]);
+        }
+        path.lineTo(enx[0], eny[0]);
+        path.quadTo(vx[0], vy[0], exx[0], exy[0]);
+        path.close();
+        return path;
+    }
+
+    /** Port of New-SparkleData: a four-pointed star with cubic waists. */
+    private Path sparkle(float R, float waist, float cx, float cy) {
+        float[][] pts = { { 0, -R }, { R, 0 }, { 0, R }, { -R, 0 } };
+        path.reset();
+        path.moveTo(cx + pts[0][0], cy + pts[0][1]);
+        for (int i = 0; i < 4; i++) {
+            float[] p = pts[i];
+            float[] q = pts[(i + 1) % 4];
+            path.cubicTo(cx + p[0] * waist, cy + p[1] * waist,
+                    cx + q[0] * waist, cy + q[1] * waist,
+                    cx + q[0], cy + q[1]);
+        }
+        path.close();
+        return path;
+    }
+
+    /** Minimal SVG path parser: M, L, C, Z (enough for the DeepSeek whale). */
+    private Path svgPath(String d) {
+        Path p = new Path();
+        String[] tok = d.replace(",", " ").trim().split("\\s+");
+        int i = 0;
+        float x = 0, y = 0, sx = 0, sy = 0;
+        while (i < tok.length) {
+            String cmd = tok[i];
+            if (cmd.equalsIgnoreCase("M") || cmd.equalsIgnoreCase("L")) {
+                i++;
+                x = Float.parseFloat(tok[i++]);
+                y = Float.parseFloat(tok[i++]);
+                if (cmd.equalsIgnoreCase("M")) { p.moveTo(x, y); sx = x; sy = y; }
+                else p.lineTo(x, y);
+            } else if (cmd.equalsIgnoreCase("C")) {
+                i++;
+                float x1 = Float.parseFloat(tok[i++]), y1 = Float.parseFloat(tok[i++]);
+                float x2 = Float.parseFloat(tok[i++]), y2 = Float.parseFloat(tok[i++]);
+                float x3 = Float.parseFloat(tok[i++]), y3 = Float.parseFloat(tok[i++]);
+                p.cubicTo(x1, y1, x2, y2, x3, y3);
+                x = x3; y = y3;
+            } else if (cmd.equalsIgnoreCase("Z")) {
+                p.close();
+                i++;
+                x = sx; y = sy;
+            } else {
+                i++;   // unsupported token, skip
+            }
+        }
+        return p;
+    }
+
     private Path ellipseRing(float cx, float cy, float ro, float ri, float squash) {
         path.reset();
         path.setFillType(Path.FillType.EVEN_ODD);
@@ -109,9 +200,18 @@ public class VectorPetView extends PetView {
 
     private Shader bodyShader() {
         int c1, c2, c3;
+        if ("gemini".equals(key)) {
+            return new LinearGradient(44f, 44f, 200f, 200f,
+                    new int[] { 0xFF4A88F8, 0xFF8B78E2, 0xFF9B72CB, 0xFFE2688C },
+                    new float[] { 0f, 0.35f, 0.7f, 1f }, Shader.TileMode.CLAMP);
+        }
         if ("qwen".equals(key)) { c1 = 0xFFBFD0FF; c2 = 0xFF6D8BFF; c3 = 0xFF2B4BE0; }
         else if ("glm".equals(key)) { c1 = 0xFFFFFFFF; c2 = 0xFFE7EDFF; c3 = 0xFFD6DEFF; }
         else if ("copilot".equals(key)) { c1 = 0xFF0F6CBD; c2 = 0xFF7FBA00; c3 = 0xFFFFD400; }
+        else if ("claude".equals(key)) { c1 = 0xFFF0A98A; c2 = 0xFFC96A45; c3 = 0xFFBD5D3A; }
+        else if ("chatgpt".equals(key)) { c1 = 0xFF62E3B8; c2 = 0xFF17A882; c3 = 0xFF0A7A5E; }
+        else if ("doubao".equals(key)) { c1 = 0xFFCFE0FA; c2 = 0xFF9CBBEA; c3 = 0xFF7FA6DD; }
+        else if ("deepseek".equals(key)) { c1 = 0xFF82A3FF; c2 = 0xFF4D6BFE; c3 = 0xFF3A55DC; }
         else { c1 = 0xFFF5F5F8; c2 = 0xFFECECF1; c3 = 0xFFDCDCE4; }
         return new RadialGradient(120f, 92f, 152f, new int[] { c1, c2, c3 },
                 new float[] { 0f, 0.55f, 1f }, Shader.TileMode.CLAMP);
@@ -133,7 +233,44 @@ public class VectorPetView extends PetView {
     }
 
     private void drawBlossom(Canvas c) {
-        if ("qwen".equals(key)) {
+        if ("deepseek".equals(key)) {
+            fill.setShader(new LinearGradient(60f, 90f, 200f, 190f, 0xFF9DBAFF, 0xFF3A55DC, Shader.TileMode.CLAMP));
+            c.drawPath(svgPath(DS_TAIL), fill);
+            fill.setShader(null);
+        } else if ("chatgpt".equals(key)) {
+            fill.setShader(new LinearGradient(40f, 30f, 200f, 190f,
+                    new int[] { 0xFF62E3B8, 0xFF17A882, 0xFF0A7A5E },
+                    new float[] { 0f, 0.5f, 1f }, Shader.TileMode.CLAMP));
+            for (int i = 0; i < 6; i++) {
+                double ang = 2 * Math.PI * i / 6;
+                float cx = 120f + (float) Math.cos(ang) * 51.5f;
+                float cy = 122f + (float) Math.sin(ang) * 51.5f;
+                Path arm = new Path();
+                rect.set(-25f, -12f, 25f, 12f);
+                arm.addRoundRect(rect, 12f, 12f, Path.Direction.CW);
+                mat.reset();
+                mat.postRotate(90f + i * 60f + 12f);
+                mat.postTranslate(cx, cy);
+                arm.transform(mat);
+                c.drawPath(arm, fill);
+            }
+            fill.setShader(null);
+        } else if ("claude".equals(key)) {
+            fill.setShader(new LinearGradient(40f, 30f, 200f, 190f,
+                    new int[] { 0xFFF3C0A6, 0xFFC96A45, 0xFFBD5D3A },
+                    new float[] { 0f, 0.5f, 1f }, Shader.TileMode.CLAMP));
+            for (int i = 0; i < 12; i++) {
+                Path ray = new Path();
+                rect.set(-9.5f, -84.5f, 9.5f, -26.5f);
+                ray.addRoundRect(rect, 9.5f, 9.5f, Path.Direction.CW);
+                mat.reset();
+                mat.postRotate(i * 30f);
+                mat.postTranslate(120f, 122f);
+                ray.transform(mat);
+                c.drawPath(ray, fill);
+            }
+            fill.setShader(null);
+        } else if ("qwen".equals(key)) {
             drawQwenBlocks(c, 42f, 13f, 62f, false);
         } else if ("grok".equals(key)) {
             Path sp = new Path();
@@ -151,11 +288,33 @@ public class VectorPetView extends PetView {
 
     private void drawBody(Canvas c) {
         Path body;
-        if ("qwen".equals(key)) body = squircle(120f, 122f, 156f, 44f, 0f);
+        if ("gemini".equals(key)) {
+            body = sparkle(78f, 0.78f, 120f, 122f);
+        } else if ("apple".equals(key)) {
+            body = squircle(120f, 122f, 176f, 88f, 0f);
+        } else if ("doubao".equals(key)) {
+            Path bp = new Path();
+            rect.set(-76f, -60f, 76f, 60f);
+            bp.addRoundRect(rect, 56f, 56f, Path.Direction.CW);
+            mat.reset();
+            mat.postRotate(-8f);
+            mat.postTranslate(122f, 124f);
+            bp.transform(mat);
+            body = bp;
+        } else if ("deepseek".equals(key)) {
+            body = svgPath(DS_BODY);
+        } else if ("claude".equals(key)) body = roundPoly(44f, 12, 0.55f, (float) (Math.PI / 2), 120f, 122f);
+        else if ("chatgpt".equals(key)) body = roundPoly(50f, 6, 0.42f, (float) (Math.PI / 2), 120f, 122f);
+        else if ("qwen".equals(key)) body = squircle(120f, 122f, 156f, 44f, 0f);
         else if ("glm".equals(key)) body = squircle(122f, 124f, 108f, 54f, 0f);
         else if ("copilot".equals(key)) body = squircle(150f, 152f, 104f, 32f, -10f);
         else body = squircle(122f, 124f, 128f, 64f, 0f);
 
+        if ("apple".equals(key) && appleBmp != null) {
+            rect.set(32f, 34f, 208f, 210f);
+            c.drawBitmap(appleBmp, null, rect, fill);
+            return;
+        }
         fill.setShader(null);
         fill.setShadowLayer(9f * scale, 0f, 3f * scale, Color.argb(80, 20, 20, 40));
         fill.setShader(bodyShader());
@@ -169,7 +328,13 @@ public class VectorPetView extends PetView {
     }
 
     private void drawOrbit(Canvas c) {
-        if ("qwen".equals(key)) {
+        if ("deepseek".equals(key)) {
+            fill.setShader(new LinearGradient(60f, 140f, 180f, 190f, 0xFFEAF1FF, 0xFFB9CBFF, Shader.TileMode.CLAMP));
+            c.drawPath(svgPath(DS_BELLY), fill);
+            fill.setShader(new LinearGradient(66f, 150f, 104f, 190f, 0xFFEAF1FF, 0xFF9DB4F0, Shader.TileMode.CLAMP));
+            c.drawPath(svgPath(DS_FIN), fill);
+            fill.setShader(null);
+        } else if ("qwen".equals(key)) {
             drawQwenBlocks(c, 54f, 17f, 56f, true);
         } else if ("glm".equals(key)) {
             fill.setShader(new LinearGradient(33f, 31f, 161f, 153f,

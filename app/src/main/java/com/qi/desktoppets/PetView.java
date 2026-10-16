@@ -82,7 +82,11 @@ public class PetView extends View {
     public void say(String s) { saying = s; hideAt = System.currentTimeMillis() + 3000; invalidate(); }
 
     public void sayRandom() {
-        if (lines != null && lines.length > 0) say(lines[rnd.nextInt(lines.length)]);
+        if (lines != null && lines.length > 0) {
+            String s = lines[rnd.nextInt(lines.length)];
+            s = s.replace("{you}", "\u4f60").replace("{me}", "\u6211");
+            say(s);
+        }
     }
 
     private void enter(int newState, long ms) {
