@@ -189,9 +189,9 @@ public class VectorPetView extends PetView {
             c.drawPath(r2, fill);
             fill.setShader(null);
         } else if ("copilot".equals(key)) {
-            fill.setShader(new LinearGradient(70f, 64f, 158f, 168f,
-                    new int[] { 0xFF0F6CBD, 0xFF00B7C3, 0xFF7FBA00, 0xFFFFD400 },
-                    new float[] { 0f, 0.35f, 0.7f, 1f }, Shader.TileMode.CLAMP));
+            fill.setShader(new RadialGradient(114f, 116f, 74f,
+                    new int[] { 0xFFF8D22A, 0xFFE3008C, 0xFF8661C5 },
+                    new float[] { 0f, 0.55f, 1f }, Shader.TileMode.CLAMP));
             c.drawPath(squircle(114f, 116f, 104f, 32f, -10f), fill);
             fill.setShader(null);
         } else if ("grok".equals(key)) {
