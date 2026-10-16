@@ -54,15 +54,15 @@ public class PetService extends Service implements PetView.Listener {
         for (int i = 0; i < KEYS.length; i++) {
             String key = KEYS[i];
             Bitmap[] frames = null;
-            if (!"grok".equals(key)) {
+            if (!isVector(key)) {
                 frames = loadFrames(key);
                 if (frames == null) continue;
             }
             String[] lines = loadLines("lines_" + key);
             int startX = (int) ((40 + (i % 5) * 120) * d);
             int startY = (int) ((120 + (i / 5) * 180) * d);
-            PetView v = "grok".equals(key)
-                    ? new VectorPetView(this, lines, startX, startY, this)
+            PetView v = isVector(key)
+                    ? new VectorPetView(this, key, lines, startX, startY, this)
                     : new PetView(this, frames, lines, startX, startY, this);
             WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.WRAP_CONTENT,
@@ -115,6 +115,11 @@ public class PetService extends Service implements PetView.Listener {
         } else {
             startForeground(1, n);
         }
+    }
+
+    /** 这几只已经改成矢量逐帧重画 */
+    private static boolean isVector(String key) {
+        return "grok".equals(key) || "qwen".equals(key) || "glm".equals(key) || "copilot".equals(key);
     }
 
     private int rawId(String name) {
