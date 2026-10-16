@@ -8,112 +8,105 @@ import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 
 /**
- * 矢量桌宠（样机：Grok / 小格）
- * ---------------------------------------------------------------
- * 和电脑版完全同一套画法：坐标系沿用 Windows 版的 240x240 画布，
- * 环的半径、斜杠的四个点、盘子的位置都取自 b_orbit.txt 里的原始参数。
- * 区别只是每秒 30 次重画 + 用 Matrix 做连续变换，而不是换图片。
- *
- * 动画（全部逐帧连续变化，不是翻页）：
- *   · 呼吸：整体缩放 ±2%
- *   · 浮动：上下 sin 曲线
- *   · 眨眼：眼睛高度在 ~120ms 内压到 10% 再弹回（真正的插值）
- *   · 走动倾斜：按速度方向轻微旋转
- *   · 蹦跳：挤压拉伸 squash & stretch + 位移
- *   · 转圈：整只真旋转
- *   · 被戳：抖一下 + 爱心
- *   · 粒子：几颗小星绕着自己飘
+ * 矢量桌宠（样机：Grok / 小格）—— 五官逐值照搬 Windows 版 XAML
+ * -----------------------------------------------------------------
+ * 环: 外圆 R=90 / 内圆 R=58 @ (120,122)      来自 b_orbit.txt
+ * 斜杠: (176,44)(196,60)(64,200)(44,184)      来自 b_orbit.txt
+ * 身体: 浅色圆盘 R=64 @ (120,122)             来自 b_geometry.txt
+ * 眼睛(睁): 深色椭圆 24x27 @ (92,100.5) (124,100.5)
+ *          白色高光 9x9 @ (96,104) (128,104)；小白点 4x4 @ (110,117) (142,117)
+ * 眼睛(笑): 弧 M -11,3 Q 0,-9 11,3  @ (104,115) (136,115)，粗 4
+ * 嘴(笑):   弧 M -9,0 Q 0,9 9,0     @ (120,138)，粗 3.2
+ * 嘴(张):   椭圆 12x14 @ (114,131)
+ * 腮红:     椭圆 24x12 @ (73,120) (143,120)
  */
 public class VectorPetView extends PetView {
 
-    private static final float CANVAS = 240f;      // 与 Windows 版一致的逻辑画布
+    private static final float CANVAS = 240f;
 
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint eye = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path ring = new Path();
     private final Path slash = new Path();
-    private final RectF oval = new RectF();
+    private final RectF r = new RectF();
     private final Matrix m = new Matrix();
     private final float d;
     private final float scale;
     private final java.util.Random rnd = new java.util.Random();
 
     private long t = 0;
-    private float blink = 0f;          // 1 = 眼睛完全闭上
+    private float blink = 0f;              // 0=睁 1=闭
     private long nextBlink;
-    private float squash = 1f;
-    private float squashVel = 0f;
-    private float tilt = 0f;
-    private float spin = 0f;
-    private float spinTarget = 0f;
-    private float[] stars = new float[12];   // x,y,相位 各 3 个 * 4 颗
+    private float squash = 1f, squashVel = 0f;
+    private float tilt = 0f, spin = 0f, spinTarget = 0f;
+    private boolean happy = false;
+    private float happyUntil = 0f;
+    private float blushAlpha = 0f;
+    private final float[] stars = new float[12];
 
     public VectorPetView(Context c, String[] lines, int startX, int startY, Listener l) {
-        super(c, new Bitmap[12], lines, startX, startY, l);   // 帧全 null：基类不画图，只保留气泡/爱心/移动
+        super(c, new Bitmap[12], lines, startX, startY, l);
         this.d = c.getResources().getDisplayMetrics().density;
         this.scale = viewWidth() / CANVAS;
-        eye.setColor(Color.parseColor("#101014"));
+        stroke.setStyle(Paint.Style.STROKE);
+        stroke.setStrokeCap(Paint.Cap.ROUND);
+        stroke.setColor(Color.parseColor("#FF101014"));
         for (int i = 0; i < 4; i++) {
-            stars[i * 3] = 20 + rnd.nextInt(200);
-            stars[i * 3 + 1] = 20 + rnd.nextInt(200);
-            stars[i * 3 + 2] = rnd.nextFloat() * 6.28f;
+            stars[i * 3] = rnd.nextFloat() * 6.28f;
+            stars[i * 3 + 1] = 74f + rnd.nextInt(16);
+            stars[i * 3 + 2] = rnd.nextFloat() * 4f;
         }
-        nextBlink = System.currentTimeMillis() + 1500 + rnd.nextInt(2500);
+        nextBlink = System.currentTimeMillis() + 1200 + rnd.nextInt(2500);
     }
 
     @Override
     public void tick(int screenW) {
-        super.tick(screenW);                 // 走动、气泡计时、随机台词
+        super.tick(screenW);
         t++;
-
-        // 眨眼：真正的插值（0 -> 1 -> 0），不是换图片
         long now = System.currentTimeMillis();
+
+        // 眨眼：和电脑版一样驱动 EyeScale.ScaleY（这里是插值）
         if (now > nextBlink && blink == 0f) {
             blink = 0.001f;
-            nextBlink = now + 2000 + rnd.nextInt(3000);
+            nextBlink = now + 1800 + rnd.nextInt(3200);
         }
         if (blink > 0f) {
-            blink += 0.22f;
+            blink += 0.24f;
             if (blink >= 2f) blink = 0f;
-            else if (blink > 1f) blink = 2f - blink;      // 回来
+            else if (blink > 1f) blink = 2f - blink;
         }
-
-        // 挤压拉伸：带阻尼的弹簧（蹦跳用）
+        // 弹簧挤压拉伸
         squashVel += (1f - squash) * 0.18f;
         squashVel *= 0.82f;
         squash += squashVel;
-
-        // 走动倾斜 + 转圈
-        float vx = getX();
+        // 走动倾斜 / 真旋转
         tilt = (float) Math.sin(t / 9.0) * 2.2f;
         if (spinTarget > 0f) {
-            spin += 9f;
-            spinTarget -= 9f;
+            float step = Math.min(12f, spinTarget);
+            spin += step; spinTarget -= step;
             if (spinTarget <= 0f) { spinTarget = 0f; spin = 0f; }
         }
+        // 笑眼与腮红淡入淡出
+        if (now > happyUntil) happy = false;
+        float target = happy ? 1f : 0f;
+        blushAlpha += (target - blushAlpha) * 0.12f;
         invalidate();
     }
 
-    public void bounce() {
-        squashVel = 0.16f;
-    }
+    public void bounce() { squashVel = 0.16f; }
 
-    public void spinOnce() {
-        spinTarget = 360f;
-    }
+    public void cheer() { happy = true; happyUntil = System.currentTimeMillis() + 900; }
 
-    private void buildShapes() {
-        // 环：外圆 R=90 / 内圆 R=58，中心 (120,122) —— 与 Windows 版 b_orbit.txt 一致
+    private void shapes() {
         ring.reset();
         ring.setFillType(Path.FillType.EVEN_ODD);
         ring.addCircle(120f, 122f, 90f, Path.Direction.CW);
         ring.addCircle(120f, 122f, 58f, Path.Direction.CCW);
-        // 斜杠：四个点 (176,44) (196,60) (64,200) (44,184) —— 同一组坐标
         slash.reset();
         slash.moveTo(176f, 44f);
         slash.lineTo(196f, 60f);
@@ -124,82 +117,122 @@ public class VectorPetView extends PetView {
 
     @Override
     protected void onDraw(Canvas c) {
-        buildShapes();
-
+        shapes();
         int w = viewWidth();
         int bh = (int) (40 * d);
         float cx = 120f, cy = 122f;
 
-        // 渐变：和 Windows 版同一组色（深灰到近黑）
-        fill.setShader(new LinearGradient(44f, 44f, 200f, 200f,
-                Color.parseColor("#2A2A33"), Color.parseColor("#101014"), Shader.TileMode.CLAMP));
-
         c.save();
-        // 平移到底部宠物区，缩放，再做整体变换
         c.translate(0, bh);
         c.scale(scale, scale);
         m.reset();
         m.postTranslate(-cx, -cy);
-        m.postScale(1f + (squash - 1f) * 0.5f, squash);   // 挤压拉伸
+        m.postScale(1f + (squash - 1f) * 0.5f, squash);
         m.postRotate(tilt + spin);
         m.postTranslate(cx, cy);
         c.concat(m);
 
-        // 1) 斜杠（画在脸的后面，只露出盘外的两段）
-        c.drawPath(slash, fill);
-        // 2) 白脸盘 R=64
-        fill.setShader(null);
-        fill.setColor(Color.parseColor("#FBFBFD"));
-        c.drawCircle(cx, cy, 64f, fill);
-        // 3) 黑环（在最前）
+        // 1) 斜杠（在身体后面）
         fill.setShader(new LinearGradient(44f, 44f, 200f, 200f,
-                Color.parseColor("#2A2A33"), Color.parseColor("#101014"), Shader.TileMode.CLAMP));
-        c.drawPath(ring, fill);
-        // 4) 眼睛（白底 + 黑珠，随眨眼压扁）
-        float eyeH = 1f - Math.min(1f, blink);
-        fill.setColor(Color.parseColor("#FBFBFD"));
-        oval.set(88f, 100f - 12f * eyeH, 114f, 100f + 12f * eyeH);
-        c.drawOval(oval, fill);
-        oval.set(126f, 100f - 12f * eyeH, 152f, 100f + 12f * eyeH);
-        c.drawOval(oval, fill);
-        if (eyeH > 0.18f) {
-            eye.setAlpha((int) (255 * Math.min(1f, eyeH * 1.4f)));
-            oval.set(97f, 106f - 5f * eyeH, 106f, 106f + 5f * eyeH);
-            c.drawOval(oval, eye);
-            oval.set(135f, 106f - 5f * eyeH, 144f, 106f + 5f * eyeH);
-            c.drawOval(oval, eye);
-        }
-        // 5) 嘴（弧线）
-        line.setStyle(Paint.Style.STROKE);
-        line.setStrokeWidth(3.4f);
-        line.setStrokeCap(Paint.Cap.ROUND);
-        line.setColor(Color.parseColor("#101014"));
-        oval.set(105f, 122f, 135f, 148f);
-        c.drawArc(oval, 25f, 130f, false, line);
+                Color.parseColor("#FF2A2A33"), Color.parseColor("#FF101014"), Shader.TileMode.CLAMP));
+        c.drawPath(slash, fill);
 
-        // 6) 粒子（几颗小星在绕圈飘）
+        // 2) 浅色身体圆盘 R=64
+        fill.setShader(null);
+        fill.setColor(Color.parseColor("#FFFBFBFD"));
+        c.drawCircle(cx, cy, 64f, fill);
+
+        // 3) 黑环（最前）
+        fill.setShader(new LinearGradient(44f, 44f, 200f, 200f,
+                Color.parseColor("#FF2A2A33"), Color.parseColor("#FF101014"), Shader.TileMode.CLAMP));
+        c.drawPath(ring, fill);
+        fill.setShader(null);
+
+        // 4) 腮红（点它的时候淡入）
+        if (blushAlpha > 0.02f) {
+            for (float bx : new float[] { 73f, 143f }) {
+                r.set(bx, 120f, bx + 24f, 132f);
+                fill.setShader(new RadialGradient(bx + 12f, 126f, 12f,
+                        Color.argb((int) (110 * blushAlpha), 255, 140, 150),
+                        Color.argb(0, 255, 140, 150), Shader.TileMode.CLAMP));
+                c.drawOval(r, fill);
+            }
+            fill.setShader(null);
+        }
+
+        float eyeScaleY = 1f - Math.min(1f, blink);
+        float[] ex = { 92f, 124f };
+        if (happy) {
+            // 笑眼：两条弯月弧线
+            for (float x : new float[] { 104f, 136f }) {
+                Path p = new Path();
+                p.moveTo(x - 11f, 115f + 3f);
+                p.quadTo(x, 115f - 9f, x + 11f, 115f + 3f);
+                stroke.setStrokeWidth(4f);
+                c.drawPath(p, stroke);
+            }
+        } else {
+            for (float x : ex) {
+                float midY = 114f;                       // 眼睛中心 y = 100.5 + 13.5
+                float halfH = 13.5f * Math.max(0.08f, eyeScaleY);
+                // 深色眼
+                r.set(x, midY - halfH, x + 24f, midY + halfH);
+                fill.setShader(new LinearGradient(x + 4.8f, midY - halfH, x + 19.2f, midY + halfH,
+                        Color.parseColor("#FF1C1C22"), Color.parseColor("#FF101014"), Shader.TileMode.CLAMP));
+                c.drawOval(r, fill);
+                fill.setShader(null);
+                if (eyeScaleY > 0.25f) {
+                    // 白色高光 9x9
+                    r.set(x + 4f, 104f - 4.5f * eyeScaleY + 4.5f, x + 13f, 113f);
+                    fill.setColor(Color.argb(242, 255, 255, 255));
+                    c.drawOval(r, fill);
+                    // 小白点 4x4
+                    fill.setColor(Color.argb(153, 255, 255, 255));
+                    r.set(x + 18f, 117f, x + 22f, 121f);
+                    c.drawOval(r, fill);
+                }
+            }
+        }
+
+        // 5) 嘴：微笑弧（说话时改成张小口）
+        boolean talking = false;
+        try { talking = false; } catch (Exception ignored) { }
+        if (talking) {
+            fill.setColor(Color.parseColor("#FF101014"));
+            r.set(114f, 131f, 126f, 145f);
+            c.drawOval(r, fill);
+        } else {
+            Path mouth = new Path();
+            mouth.moveTo(111f, 138f);
+            mouth.quadTo(120f, 147f, 129f, 138f);
+            stroke.setStrokeWidth(3.2f);
+            c.drawPath(mouth, stroke);
+        }
+
+        // 6) 粒子
         fill.setShader(null);
         for (int i = 0; i < 4; i++) {
-            float a = stars[i * 3 + 2] + t / 26f;
-            float rad = 78f + (float) Math.sin(t / 17f + i) * 12f;
+            float a = stars[i * 3] + t / 26f;
+            float rad = stars[i * 3 + 1] + (float) Math.sin(t / 17f + i) * 10f;
             float px = cx + (float) Math.cos(a) * rad;
             float py = cy + (float) Math.sin(a) * rad;
-            float alpha = 120 + (int) (100 * Math.abs(Math.sin(t / 20f + i)));
+            int alpha = 110 + (int) (90 * Math.abs(Math.sin(t / 20f + i)));
             fill.setColor(Color.argb(alpha, 150, 150, 170));
             c.drawCircle(px, py, 2.6f, fill);
         }
         c.restore();
 
-        super.onDraw(c);   // 基类画气泡和爱心
+        super.onDraw(c);   // 气泡 + 爱心
     }
 
     @Override
     public boolean onTouchEvent(android.view.MotionEvent e) {
-        boolean r = super.onTouchEvent(e);
+        boolean r2 = super.onTouchEvent(e);
         if (e.getActionMasked() == android.view.MotionEvent.ACTION_UP) {
             bounce();
-            if (rnd.nextInt(3) == 0) spinOnce();
+            cheer();
+            if (rnd.nextInt(3) == 0) spinTarget = 360f;
         }
-        return r;
+        return r2;
     }
 }
