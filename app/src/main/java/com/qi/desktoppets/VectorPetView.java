@@ -46,6 +46,7 @@ public class VectorPetView extends PetView {
     private static final String DS_FIN = "M 87,153 C 76,159 66,173 70,185 C 82,187 96,179 102,167 C 100,159 93,153 87,153 Z";
 
     private final Bitmap appleBmp;
+    private Bitmap imgBmp;   // generic bitmap body (google apple / apple logo / 1998 g)
     private Path cachedBody;
     private Path dsBody, dsBelly, dsTail, dsFin;
     private final String key;
@@ -74,13 +75,14 @@ public class VectorPetView extends PetView {
         super(c, new Bitmap[12], lines, startX, startY, l);
         this.key = petKey;
         Bitmap ab = null;
-        if ("apple".equals(petKey)) {
+        if ("apple".equals(petKey) || "google_old".equals(petKey) || "apple_logo".equals(petKey) || "win7".equals(petKey) || "win10".equals(petKey)) {
             try (java.io.InputStream in = c.getResources().openRawResource(
-                    c.getResources().getIdentifier("apple_body", "raw", c.getPackageName()))) {
+                    c.getResources().getIdentifier(petKey + "_body", "raw", c.getPackageName()))) {
                 ab = android.graphics.BitmapFactory.decodeStream(in);
             } catch (Exception ignored) { }
         }
         this.appleBmp = ab;
+        this.imgBmp = ab;
         this.d = c.getResources().getDisplayMetrics().density;
         this.scale = viewWidth() / CANVAS;
         // NOTE: no LAYER_TYPE_SOFTWARE here. A software layer is what crushed
@@ -324,6 +326,11 @@ public class VectorPetView extends PetView {
         else if ("copilot".equals(key)) body = squircle(150f, 152f, 104f, 32f, -10f);
         else body = squircle(122f, 124f, 128f, 64f, 0f);
 
+        if (imgBmp != null && ("apple".equals(key) || "google_old".equals(key) || "apple_logo".equals(key) || "win7".equals(key) || "win10".equals(key))) {
+            rect.set(32f, 34f, 208f, 210f);
+            c.drawBitmap(imgBmp, null, rect, fill);
+            return;
+        }
         if ("apple".equals(key) && appleBmp != null) {
             rect.set(32f, 34f, 208f, 210f);
             c.drawBitmap(appleBmp, null, rect, fill);

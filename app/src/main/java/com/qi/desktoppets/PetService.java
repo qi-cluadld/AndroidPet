@@ -143,7 +143,9 @@ public class PetService extends Service implements PetView.Listener {
                 || "claude".equals(key) || "chatgpt".equals(key)
                 || "doubao".equals(key) || "deepseek".equals(key)
                 || "gemini".equals(key) || "apple".equals(key)
-                || "google_g".equals(key) || "google_flat".equals(key);
+                || "google_g".equals(key) || "google_flat".equals(key)
+                || "google_old".equals(key) || "apple_logo".equals(key)
+                || "win7".equals(key) || "win10".equals(key);
     }
 
     private int rawId(String name) {
