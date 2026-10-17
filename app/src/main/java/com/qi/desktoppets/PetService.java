@@ -41,6 +41,9 @@ public class PetService extends Service implements PetView.Listener {
     private final List<WindowManager.LayoutParams> params = new ArrayList<>();
     private final Handler h = new Handler(Looper.getMainLooper());
     private long lastGreet;
+    private boolean lowPower;
+    private int frameMs = 50;
+    private int maxPets = 10;
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -48,10 +51,23 @@ public class PetService extends Service implements PetView.Listener {
     public void onCreate() {
         super.onCreate();
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        // ---- Kirin / HarmonyOS adaptation ----
+        // Huawei and Honor devices (and anything with a Kirin SoC, or <= 6 cores)
+        // get the low-power profile: 15fps, at most six pets, no particles.
+        String mf = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase();
+        String hw = Build.HARDWARE == null ? "" : Build.HARDWARE.toLowerCase();
+        boolean huawei = mf.contains("huawei") || mf.contains("honor") || hw.contains("kirin") || hw.contains("hi3");
+        boolean weak = Runtime.getRuntime().availableProcessors() <= 6;
+        lowPower = huawei || weak;
+        VectorPetView.LOW_POWER = lowPower;
+        frameMs = lowPower ? 66 : 50;          // 15fps vs 20fps
+        maxPets = lowPower ? 6 : 10;
+        android.util.Log.i("DesktopPets", "profile: lowPower=" + lowPower + " (" + Build.MANUFACTURER + "/" + Build.HARDWARE + "/" + Runtime.getRuntime().availableProcessors() + " cores) fps=" + (1000 / frameMs));
         startForegroundCompat();
         int screenW = getResources().getDisplayMetrics().widthPixels;
         float d = getResources().getDisplayMetrics().density;
-        for (int i = 0; i < KEYS.length; i++) {
+        int limit = Math.min(KEYS.length, maxPets);
+        for (int i = 0; i < limit; i++) {
             String key = KEYS[i];
             Bitmap[] frames = null;
             if (!isVector(key)) {
@@ -59,9 +75,10 @@ public class PetService extends Service implements PetView.Listener {
                 if (frames == null) continue;
             }
             String[] lines = loadLines("lines_" + key);
-            int cols = 5;
+            int cols = 6;
             int cellW = screenW / cols;
             int cellH = getResources().getDisplayMetrics().heightPixels / 3;
+            if (i >= 10) { startXJump: ; }
             int startX = (int) ((i % cols) * cellW + cellW * 0.12f);
             int startY = (int) ((i / cols) * cellH + cellH * 0.25f);
             PetView v = isVector(key)
@@ -125,7 +142,8 @@ public class PetService extends Service implements PetView.Listener {
         return "grok".equals(key) || "qwen".equals(key) || "glm".equals(key) || "copilot".equals(key)
                 || "claude".equals(key) || "chatgpt".equals(key)
                 || "doubao".equals(key) || "deepseek".equals(key)
-                || "gemini".equals(key) || "apple".equals(key);
+                || "gemini".equals(key) || "apple".equals(key)
+                || "google_g".equals(key) || "google_flat".equals(key);
     }
 
     private int rawId(String name) {
@@ -196,9 +214,13 @@ public class PetService extends Service implements PetView.Listener {
             v.wy += v.dragDy;
             v.dragDx = 0;
             v.dragDy = 0;
-            lp.x = (int) v.wx;
-            lp.y = (int) (v.wy + v.bob());
-            try { wm.updateViewLayout(v, lp); } catch (Exception ignored) { }
+            int nx = (int) v.wx;
+            int ny = (int) (v.wy + v.bob());
+            if (nx != lp.x || ny != lp.y) {          // only touch the window manager when it actually moved
+                lp.x = nx;
+                lp.y = ny;
+                try { wm.updateViewLayout(v, lp); } catch (Exception ignored) { }
+            }
         }
         // 两只靠得近就打个招呼（本地实现，不需要网络）
         for (int a = 0; a < pets.size(); a++) {
@@ -212,7 +234,7 @@ public class PetService extends Service implements PetView.Listener {
                 }
             }
         }
-        h.postDelayed(this::tick, 33);
+        h.postDelayed(this::tick, frameMs);   // 20fps normally, 15fps on Kirin / HarmonyOS
     }
 
     @Override

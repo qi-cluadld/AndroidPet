@@ -37,6 +37,8 @@ import android.graphics.Shader;
 public class VectorPetView extends PetView {
 
     private static final float CANVAS = 240f;
+    /** Kirin / HarmonyOS low-power profile: no particles, fewer per-frame allocations. */
+    public static boolean LOW_POWER = false;
 
     private static final String DS_BODY = "M 48,132 C 48,104 66,90 94,90 C 128,90 160,98 176,116 C 186,128 186,146 178,152 C 168,174 142,186 114,186 C 84,186 52,176 48,152 C 46,144 46,138 48,132 Z";
     private static final String DS_BELLY = "M 56,148 C 72,172 100,186 122,186 C 148,186 168,170 178,148 C 168,160 146,170 120,170 C 94,170 70,158 56,148 Z";
@@ -44,6 +46,8 @@ public class VectorPetView extends PetView {
     private static final String DS_FIN = "M 87,153 C 76,159 66,173 70,185 C 82,187 96,179 102,167 C 100,159 93,153 87,153 Z";
 
     private final Bitmap appleBmp;
+    private Path cachedBody;
+    private Path dsBody, dsBelly, dsTail, dsFin;
     private final String key;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -79,7 +83,8 @@ public class VectorPetView extends PetView {
         this.appleBmp = ab;
         this.d = c.getResources().getDisplayMetrics().density;
         this.scale = viewWidth() / CANVAS;
-        setLayerType(LAYER_TYPE_SOFTWARE, null);
+        // NOTE: no LAYER_TYPE_SOFTWARE here. A software layer is what crushed
+        // Kirin / HarmonyOS devices down to a few fps; the shadow is drawn cheaply instead.
         stroke.setStyle(Paint.Style.STROKE);
         stroke.setStrokeCap(Paint.Cap.ROUND);
         stroke.setColor(Color.parseColor("#FF101014"));
@@ -235,7 +240,8 @@ public class VectorPetView extends PetView {
     private void drawBlossom(Canvas c) {
         if ("deepseek".equals(key)) {
             fill.setShader(new LinearGradient(60f, 90f, 200f, 190f, 0xFF9DBAFF, 0xFF3A55DC, Shader.TileMode.CLAMP));
-            c.drawPath(svgPath(DS_TAIL), fill);
+            if (dsTail == null) { dsTail = svgPath(DS_TAIL); dsBody = svgPath(DS_BODY); dsBelly = svgPath(DS_BELLY); dsFin = svgPath(DS_FIN); }
+            c.drawPath(dsTail, fill);
             fill.setShader(null);
         } else if ("chatgpt".equals(key)) {
             fill.setShader(new LinearGradient(40f, 30f, 200f, 190f,
@@ -288,7 +294,14 @@ public class VectorPetView extends PetView {
 
     private void drawBody(Canvas c) {
         Path body;
-        if ("gemini".equals(key)) {
+        if ("google_g".equals(key) || "google_flat".equals(key)) {
+            drawGoogle(c, "google_g".equals(key));
+            super.onDraw(c);
+            return;
+        }
+        if (cachedBody != null) {
+            body = cachedBody;
+        } else if ("gemini".equals(key)) {
             body = sparkle(78f, 0.78f, 120f, 122f);
         } else if ("apple".equals(key)) {
             body = squircle(120f, 122f, 176f, 88f, 0f);
@@ -302,7 +315,8 @@ public class VectorPetView extends PetView {
             bp.transform(mat);
             body = bp;
         } else if ("deepseek".equals(key)) {
-            body = svgPath(DS_BODY);
+            if (dsBody == null) { dsBody = svgPath(DS_BODY); }
+            body = dsBody;
         } else if ("claude".equals(key)) body = roundPoly(44f, 12, 0.55f, (float) (Math.PI / 2), 120f, 122f);
         else if ("chatgpt".equals(key)) body = roundPoly(50f, 6, 0.42f, (float) (Math.PI / 2), 120f, 122f);
         else if ("qwen".equals(key)) body = squircle(120f, 122f, 156f, 44f, 0f);
@@ -316,11 +330,16 @@ public class VectorPetView extends PetView {
             return;
         }
         fill.setShader(null);
-        fill.setShadowLayer(9f * scale, 0f, 3f * scale, Color.argb(80, 20, 20, 40));
+        fill.setColor(Color.argb(56, 10, 10, 25));
+        mat.reset();
+        mat.postTranslate(0f, 3f);
+        Path shadowPath = new Path(body);
+        shadowPath.transform(mat);
+        c.drawPath(shadowPath, fill);
         fill.setShader(bodyShader());
         c.drawPath(body, fill);
-        fill.clearShadowLayer();
 
+        if (cachedBody == null && !"apple".equals(key)) { cachedBody = new Path(body); }
         fill.setShader(new RadialGradient(81.6f, 48f, 170f,
                 new int[] { 0x8CFFFFFF, 0x00FFFFFF }, new float[] { 0f, 1f }, Shader.TileMode.CLAMP));
         c.drawPath(body, fill);
@@ -330,9 +349,9 @@ public class VectorPetView extends PetView {
     private void drawOrbit(Canvas c) {
         if ("deepseek".equals(key)) {
             fill.setShader(new LinearGradient(60f, 140f, 180f, 190f, 0xFFEAF1FF, 0xFFB9CBFF, Shader.TileMode.CLAMP));
-            c.drawPath(svgPath(DS_BELLY), fill);
+            c.drawPath(dsBelly, fill);
             fill.setShader(new LinearGradient(66f, 150f, 104f, 190f, 0xFFEAF1FF, 0xFF9DB4F0, Shader.TileMode.CLAMP));
-            c.drawPath(svgPath(DS_FIN), fill);
+            c.drawPath(dsFin, fill);
             fill.setShader(null);
         } else if ("qwen".equals(key)) {
             drawQwenBlocks(c, 54f, 17f, 56f, true);
@@ -365,6 +384,44 @@ public class VectorPetView extends PetView {
             c.drawPath(circleRing(120f, 122f, 90f, 58f), fill);
             fill.setShader(null);
         }
+    }
+
+    /** Google "G": a thick ring open at the upper right, plus the blue bar. */
+    private void drawGoogle(Canvas c, boolean gradient) {
+        float cx = 120f, cy = 122f;
+        float ringR = 77f;        // mid radius of the ring stroke
+        float thick = 30f;
+        stroke.setStrokeWidth(thick);
+        stroke.setStrokeCap(Paint.Cap.BUTT);
+
+        if (gradient) {
+            int[] cols = { 0xFF4285F4, 0xFF34A853, 0xFFFBBC05, 0xFFEA4335, 0xFF4285F4 };
+            stroke.setShader(new android.graphics.SweepGradient(cx, cy, cols, null));
+            Path p = new Path();
+            rect.set(cx - ringR, cy - ringR, cx + ringR, cy + ringR);
+            p.addArc(rect, -10f, -320f);
+            c.drawPath(p, stroke);
+        } else {
+            // four flat segments: blue (right), green (bottom), yellow (left), red (top)
+            float[][] seg = { { -10f, -70f, 0xFF4285F4 }, { -80f, -120f, 0xFF34A853 },
+                              { -200f, -40f, 0xFFFBBC05 }, { -240f, -110f, 0xFFEA4335 } };
+            for (float[] s : seg) {
+                stroke.setShader(null);
+                stroke.setColor((int) s[2]);
+                Path p = new Path();
+                rect.set(cx - ringR, cy - ringR, cx + ringR, cy + ringR);
+                p.addArc(rect, s[0], s[1]);
+                c.drawPath(p, stroke);
+            }
+        }
+        stroke.setShader(null);
+        // the blue bar from the centre out to the right edge
+        fill.setShader(null);
+        fill.setColor(0xFF4285F4);
+        Path bar = new Path();
+        rect.set(cx - 6f, cy - thick / 2f, cx + ringR + thick / 2f, cy + thick / 2f);
+        bar.addRoundRect(rect, thick / 2f, thick / 2f, Path.Direction.CW);
+        c.drawPath(bar, fill);
     }
 
     private void drawFace(Canvas c) {
@@ -413,8 +470,9 @@ public class VectorPetView extends PetView {
     }
 
     private void drawStars(Canvas c) {
+        if (LOW_POWER) return;
         fill.setShader(null);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 2; i++) {
             float a = stars[i * 3] + t / 26f;
             float rad = stars[i * 3 + 1] + (float) Math.sin(t / 17f + i) * 10f;
             float px = 120f + (float) Math.cos(a) * rad;
